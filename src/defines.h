@@ -26,11 +26,13 @@
 // ================================================
 
 // Set parameters of IMU and board used
-#define IMU IMU_BNO085
+#define IMU IMU_ICM20948
 #define SECOND_IMU IMU
-#define BOARD BOARD_SLIMEVR
-#define IMU_ROTATION DEG_90
+#define BOARD BOARD_WEMOSD1MINI
+#define IMU_ROTATION DEG_270
 #define SECOND_IMU_ROTATION DEG_270
+
+#define USE_6_AXIS false // uses 9 (with mag) if false (only for ICM-20948 currently)
 
 // Battery monitoring options (comment to disable):
 //   BAT_EXTERNAL for ADC pin, 
@@ -58,6 +60,13 @@
 //   LED_INVERTED 
 //     - false for output 3.3V on high
 //     - true for pull down to GND on high
+
+//Only works in esp8266
+#if BOARD == BOARD_WEMOSD1MINI
+#define MAX_ODR false // (True) enables Fastest Output Rate (False) caps it to 100Hz (ICM20948 only)
+#else
+#define MAX_ODR false // Unsupported Board, leave as false
+#endif
 
 // Board-specific configurations
 #if BOARD == BOARD_SLIMEVR

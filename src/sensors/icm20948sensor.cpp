@@ -32,6 +32,13 @@ int bias_save_periods[] = { 120, 180, 300, 600, 600 }; // 2min + 3min + 5min + 1
 // #ifndef ENABLE_TAP
 //     #define ENABLE_TAP false
 // #endif
+#ifndef ODRVALUE
+    #ifdef ESP8266
+        #define ODRVALUE 0.5
+    #else
+        #define ODRVALUE 1.25
+    #endif
+#endif
 
 void ICM20948Sensor::save_bias(bool repeat) {
 #if defined(SAVE_BIAS) && SAVE_BIAS
@@ -182,85 +189,52 @@ void ICM20948Sensor::motionSetup() {
         return;
     }
 
-    if (USE_6_AXIS)
+#if USE_6_AXIS
+    m_Logger.debug("Using 6 axis configuration");
+    if(imu.enableDMPSensor(INV_ICM20948_SENSOR_GAME_ROTATION_VECTOR) == ICM_20948_Stat_Ok)
     {
-        m_Logger.debug("Using 6 axis configuration");
-        if(imu.enableDMPSensor(INV_ICM20948_SENSOR_GAME_ROTATION_VECTOR) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Enabled DMP sensor for game rotation vector");
-        }
-        else
-        {
-            m_Logger.fatal("Failed to enable DMP sensor for game rotation vector");
-            return; 
-        }
+        m_Logger.debug("Enabled DMP sensor for game rotation vector");
     }
     else
     {
-        m_Logger.debug("Using 9 axis configuration");
-        if(imu.enableDMPSensor(INV_ICM20948_SENSOR_ORIENTATION) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Enabled DMP sensor for sensor orientation");
-        }
-        else
-        {
-            m_Logger.fatal("Failed to enable DMP sensor orientation");
-            return; 
-        }
+        m_Logger.fatal("Failed to enable DMP sensor for game rotation vector");
+        return; 
     }
+#else
+    m_Logger.debug("Using 9 axis configuration");
+    if(imu.enableDMPSensor(INV_ICM20948_SENSOR_ORIENTATION) == ICM_20948_Stat_Ok)
+    {
+        m_Logger.debug("Enabled DMP sensor for sensor orientation");
+    }
+    else
+    {
+        m_Logger.fatal("Failed to enable DMP sensor orientation");
+        return; 
+    }
+#endif
 
     // Might need to set up other DMP functions later, just Quad6/Quad9 for now
-    #if MAX_ODR
-    if (USE_6_AXIS)
+#if USE_6_AXIS
+    if(imu.setDMPODRrate(DMP_ODR_Reg_Quat6, ODRVALUE) == ICM_20948_Stat_Ok)
     {
-        if(imu.setDMPODRrate(DMP_ODR_Reg_Quat6, 0.5) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Set Quat6 to Max frequency");
-        }
-        else
-        {
-           m_Logger.fatal("Failed to set Quat6 to Max frequency");
-            return;
-        }
+        m_Logger.debug("Set Quat6 to Max frequency");
     }
     else
     {
-        if(imu.setDMPODRrate(DMP_ODR_Reg_Quat9, 0.5) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Set Quat9 to Max frequency");
-        }
-        else
-        {
-           m_Logger.fatal("Failed to set Quat9 to Max frequency");
-            return;
-        }
+        m_Logger.fatal("Failed to set Quat6 to Max frequency");
+        return;
     }
-    #else
-    if (USE_6_AXIS)
+#else
+    if(imu.setDMPODRrate(DMP_ODR_Reg_Quat9, ODRVALUE) == ICM_20948_Stat_Ok)
     {
-        if(imu.setDMPODRrate(DMP_ODR_Reg_Quat6, 1.25) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Set Quat6 to 100Hz frequency");
-        }
-        else
-        {
-           m_Logger.fatal("Failed to set Quat6 to 100Hz frequency");
-            return;
-        }
+        m_Logger.debug("Set Quat9 to Max frequency");
     }
     else
     {
-        if(imu.setDMPODRrate(DMP_ODR_Reg_Quat9, 1.25) == ICM_20948_Stat_Ok)
-        {
-            m_Logger.debug("Set Quat9 to 100Hz frequency");
-        }
-        else
-        {
-           m_Logger.fatal("Failed to set Quat9 to 100Hz frequency");
-            return;
-        }
+        m_Logger.fatal("Failed to set Quat9 to Max frequency");
+        return;
     }
-    #endif
+#endif
 
     // Enable the FIFO
     if(imu.enableFIFO() == ICM_20948_Stat_Ok)
@@ -366,62 +340,59 @@ void ICM20948Sensor::motionLoop() {
         ICM_20948_Status_e readStatus = imu.readDMPdataFromFIFO(&dmpData);
         if(readStatus == ICM_20948_Stat_Ok)
         {
-            if(USE_6_AXIS)
+            #if USE_6_AXIS
+            if ((dmpData.header & DMP_header_bitmap_Quat6) > 0)
             {
-                if ((dmpData.header & DMP_header_bitmap_Quat6) > 0)
+                // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+                // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+                // The quaternion data is scaled by 2^30.
+                // Scale to +/- 1
+                double q1 = ((double)dmpData.Quat6.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q2 = ((double)dmpData.Quat6.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q3 = ((double)dmpData.Quat6.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
+                quaternion.w = q0;
+                quaternion.x = q1;
+                quaternion.y = q2;
+                quaternion.z = q3;
+                quaternion *= sensorOffset; //imu rotation
+
+                #if ENABLE_INSPECTION
                 {
-                    // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-                    // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-                    // The quaternion data is scaled by 2^30.
-                    // Scale to +/- 1
-                    double q1 = ((double)dmpData.Quat6.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q2 = ((double)dmpData.Quat6.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q3 = ((double)dmpData.Quat6.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
-                    quaternion.w = q0;
-                    quaternion.x = q1;
-                    quaternion.y = q2;
-                    quaternion.z = q3;
-                    quaternion *= sensorOffset; //imu rotation
-
-#if ENABLE_INSPECTION
-                    {
-                        Network::sendInspectionFusedIMUData(sensorId, quaternion);
-                    }
-#endif
-
-                    newData = true;
-                    lastData = millis();
+                    Network::sendInspectionFusedIMUData(sensorId, quaternion);
                 }
+                #endif
+
+                newData = true;
+                lastData = millis();
             }
-            else
+            #else
+            if((dmpData.header & DMP_header_bitmap_Quat9) > 0)
             {
-                if((dmpData.header & DMP_header_bitmap_Quat9) > 0)
+                // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+                // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+                // The quaternion data is scaled by 2^30.
+                // Scale to +/- 1
+                double q1 = ((double)dmpData.Quat9.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q2 = ((double)dmpData.Quat9.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q3 = ((double)dmpData.Quat9.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
+                double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
+                quaternion.w = q0;
+                quaternion.x = q1;
+                quaternion.y = q2;
+                quaternion.z = q3;
+                quaternion *= sensorOffset; //imu rotation
+
+                #if ENABLE_INSPECTION
                 {
-                    // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-                    // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-                    // The quaternion data is scaled by 2^30.
-                    // Scale to +/- 1
-                    double q1 = ((double)dmpData.Quat9.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q2 = ((double)dmpData.Quat9.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q3 = ((double)dmpData.Quat9.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
-                    double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
-                    quaternion.w = q0;
-                    quaternion.x = q1;
-                    quaternion.y = q2;
-                    quaternion.z = q3;
-                    quaternion *= sensorOffset; //imu rotation
-
-#if ENABLE_INSPECTION
-                    {
-                        Network::sendInspectionFusedIMUData(sensorId, quaternion);
-                    }
-#endif
-
-                    newData = true;
-                    lastData = millis();
+                    Network::sendInspectionFusedIMUData(sensorId, quaternion);
                 }
+                #endif
+
+                newData = true;
+                lastData = millis();
             }
+            #endif
         }
         else 
         {
@@ -449,11 +420,11 @@ void ICM20948Sensor::motionLoop() {
 void ICM20948Sensor::sendData() { 
     if(newData) {
         newData = false;
-        if (USE_6_AXIS) {
+        #if USE_6_AXIS 
             Network::sendRotationData(&quaternion, DATA_TYPE_NORMAL, 0, sensorId);
-        } else {
+        #else
             Network::sendRotationData(&quaternion, DATA_TYPE_NORMAL, dmpData.Quat9.Data.Accuracy, sensorId);
-        }
+        #endif
     }
 }
 

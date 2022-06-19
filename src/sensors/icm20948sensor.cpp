@@ -347,14 +347,11 @@ void ICM20948Sensor::motionLoop() {
                 // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
                 // The quaternion data is scaled by 2^30.
                 // Scale to +/- 1
-                double q1 = ((double)dmpData.Quat6.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q2 = ((double)dmpData.Quat6.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q3 = ((double)dmpData.Quat6.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
-                quaternion.w = q0;
-                quaternion.x = q1;
-                quaternion.y = q2;
-                quaternion.z = q3;
+                quaternion.x = (float)(((double)dmpData.Quat6.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.y = (float)(((double)dmpData.Quat6.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.z = (float)(((double)dmpData.Quat6.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
+
                 quaternion *= sensorOffset; //imu rotation
 
                 #if ENABLE_INSPECTION
@@ -373,14 +370,10 @@ void ICM20948Sensor::motionLoop() {
                 // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
                 // The quaternion data is scaled by 2^30.
                 // Scale to +/- 1
-                double q1 = ((double)dmpData.Quat9.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q2 = ((double)dmpData.Quat9.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q3 = ((double)dmpData.Quat9.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
-                double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
-                quaternion.w = q0;
-                quaternion.x = q1;
-                quaternion.y = q2;
-                quaternion.z = q3;
+                quaternion.x = (float)(((double)dmpData.Quat9.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.y = (float)(((double)dmpData.Quat9.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.z = (float)(((double)dmpData.Quat9.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
+                quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
                 quaternion *= sensorOffset; //imu rotation
 
                 #if ENABLE_INSPECTION
@@ -399,7 +392,31 @@ void ICM20948Sensor::motionLoop() {
             if (readStatus == ICM_20948_Stat_FIFONoDataAvail || lastData + 1000 < millis()) {
                 dataavaliable = false;
             } else if (readStatus == ICM_20948_Stat_FIFOMoreDataAvail) {
-                dataavaliable = true;
+                uint16_t fifosize;
+                // only read more data if at least a full set of possible data is avaliable
+                if (imu.getFIFOcount(&fifosize) == ICM_20948_Stat_Ok)
+                {
+                    // icm_20948_DMP_Header_Bytes 2 byte
+                    // icm_20948_DMP_Quat6_Bytes 12 byte
+                    // icm_20948_DMP_Quat9_Bytes 14 byte
+                    #if USE_6_AXIS 
+                        #define icm_20948_minSize 14
+                    #else
+                        #define icm_20948_minSize 16
+                    #endif 
+
+                    if (fifosize >= icm_20948_minSize ) {
+                        dataavaliable = true;
+                    }
+                    else
+                    {  
+                        dataavaliable = true;
+                    }
+                }
+                else {
+                    dataavaliable = true;
+                }
+                
             }
             // Sorry for this horrible formatting
 #ifdef DEBUG_SENSOR

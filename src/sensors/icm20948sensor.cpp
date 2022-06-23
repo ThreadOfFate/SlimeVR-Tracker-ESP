@@ -335,97 +335,80 @@ void ICM20948Sensor::motionLoop() {
 
     timer.tick();
 
-    bool dataavaliable = true;
-    while (dataavaliable) {
-        ICM_20948_Status_e readStatus = imu.readDMPdataFromFIFO(&dmpData);
-        if(readStatus == ICM_20948_Stat_Ok)
+    ICM_20948_Status_e readStatus = imu.readDMPdataFromFIFO(&dmpData);
+    if((readStatus == ICM_20948_Stat_Ok) || (readStatus == ICM_20948_Stat_FIFOMoreDataAvail))
+    {
+        #if USE_6_AXIS
+        if ((dmpData.header & DMP_header_bitmap_Quat6) > 0)
         {
-            #if USE_6_AXIS
-            if ((dmpData.header & DMP_header_bitmap_Quat6) > 0)
+            // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+            // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+            // The quaternion data is scaled by 2^30.
+            // Scale to +/- 1
+            quaternion.x = (float)(((double)dmpData.Quat6.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.y = (float)(((double)dmpData.Quat6.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.z = (float)(((double)dmpData.Quat6.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
+
+            quaternion *= sensorOffset; //imu rotation
+
+            #if ENABLE_INSPECTION
             {
-                // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-                // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-                // The quaternion data is scaled by 2^30.
-                // Scale to +/- 1
-                quaternion.x = (float)(((double)dmpData.Quat6.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.y = (float)(((double)dmpData.Quat6.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.z = (float)(((double)dmpData.Quat6.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
-
-                quaternion *= sensorOffset; //imu rotation
-
-                #if ENABLE_INSPECTION
-                {
-                    Network::sendInspectionFusedIMUData(sensorId, quaternion);
-                }
-                #endif
-
-                newData = true;
-                lastData = millis();
-            }
-            #else
-            if((dmpData.header & DMP_header_bitmap_Quat9) > 0)
-            {
-                // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
-                // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
-                // The quaternion data is scaled by 2^30.
-                // Scale to +/- 1
-                quaternion.x = (float)(((double)dmpData.Quat9.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.y = (float)(((double)dmpData.Quat9.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.z = (float)(((double)dmpData.Quat9.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
-                quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
-                quaternion *= sensorOffset; //imu rotation
-
-                #if ENABLE_INSPECTION
-                {
-                    Network::sendInspectionFusedIMUData(sensorId, quaternion);
-                }
-                #endif
-
-                newData = true;
-                lastData = millis();
+                Network::sendInspectionFusedIMUData(sensorId, quaternion);
             }
             #endif
-        }
-        else 
-        {
-            if (readStatus == ICM_20948_Stat_FIFONoDataAvail || lastData + 1000 < millis()) {
-                dataavaliable = false;
-            } else if (readStatus == ICM_20948_Stat_FIFOMoreDataAvail) {
-                uint16_t fifosize;
-                // only read more data if at least a full set of possible data is avaliable
-                if (imu.getFIFOcount(&fifosize) == ICM_20948_Stat_Ok)
-                {
-                    // icm_20948_DMP_Header_Bytes 2 byte
-                    // icm_20948_DMP_Quat6_Bytes 12 byte
-                    // icm_20948_DMP_Quat9_Bytes 14 byte
-                    #if USE_6_AXIS 
-                        #define icm_20948_minSize 14
-                    #else
-                        #define icm_20948_minSize 16
-                    #endif 
 
-                    if (fifosize >= icm_20948_minSize ) {
-                        dataavaliable = true;
-                    }
-                    else
-                    {  
-                        dataavaliable = true;
-                    }
-                }
-                else {
-                    dataavaliable = true;
-                }
-                
+            newData = true;
+            lastData = millis();
+        }
+        #else
+        if((dmpData.header & DMP_header_bitmap_Quat9) > 0)
+        {
+            // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.
+            // In case of drift, the sum will not add to 1, therefore, quaternion data need to be corrected with right bias values.
+            // The quaternion data is scaled by 2^30.
+            // Scale to +/- 1
+            quaternion.x = (float)(((double)dmpData.Quat9.Data.Q1) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.y = (float)(((double)dmpData.Quat9.Data.Q2) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.z = (float)(((double)dmpData.Quat9.Data.Q3) / 1073741824.0); // Convert to double. Divide by 2^30
+            quaternion.w = sqrt(1.0 - ((quaternion.x * quaternion.x) + (quaternion.y * quaternion.y) + (quaternion.z * quaternion.z)));
+            quaternion *= sensorOffset; //imu rotation
+
+            #if ENABLE_INSPECTION
+            {
+                Network::sendInspectionFusedIMUData(sensorId, quaternion);
             }
-            // Sorry for this horrible formatting
-#ifdef DEBUG_SENSOR
-            else {
-                m_Logger.trace("e0x%02x", readStatus);
-            }
-#endif
+            #endif
+
+            newData = true;
+            lastData = millis();
+        }
+        #endif
+    }
+
+    // Instead of reading everytime the last element, we clear the fifo 
+    // if after the readout the fifo is has more than 2 possible datasets.
+    uint16_t fifosize;
+    if (imu.getFIFOcount(&fifosize) == ICM_20948_Stat_Ok)
+    {
+        // icm_20948_DMP_Header_Bytes 2 byte
+        // icm_20948_DMP_Quat6_Bytes 12 byte
+        // icm_20948_DMP_Quat9_Bytes 14 byte
+        #if USE_6_AXIS 
+            #define icm_20948_minSize 32
+        #else
+            #define icm_20948_minSize 34
+        #endif 
+
+        if (fifosize >= icm_20948_minSize ) {
+            //dataavaliable = true;
+            imu.resetFIFO();
+        #ifdef DEBUG_SENSOR
+            m_Logger.trace("Fifo Reseted: Bytes in FIFO: %d", fifosize);
+        #endif
         }
     }
+
     if(lastData + 1000 < millis()) {
         working = false;
         lastData = millis();  

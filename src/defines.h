@@ -32,6 +32,7 @@
 #define IMU_ROTATION DEG_90
 #define SECOND_IMU_ROTATION DEG_270
 
+
 // Battery monitoring options (comment to disable):
 //   BAT_EXTERNAL for ADC pin, 
 //   BAT_INTERNAL for internal - can detect only low battery, 
@@ -46,6 +47,21 @@
 #define BATTERY_SHIELD_RESISTANCE 180 //130k BatteryShield, 180k SlimeVR or fill in external resistor value in kOhm
 // #define BATTERY_SHIELD_R1 100 // Board voltage divider resistor Ain to GND in kOhm
 // #define BATTERY_SHIELD_R2 220 // Board voltage divider resistor Ain to INPUT_BOARD in kOhm
+
+//Only works in esp8266
+#if BOARD == BOARD_WEMOSD1MINI
+#define MAX_ODR true // (True) enables Fastest Output Rate (False) caps it to 100Hz (ICM20948 only)
+#else
+#define MAX_ODR false // Unsupported Board, leave as false
+#endif
+
+//Only works in esp8266
+#if BOARD == BOARD_WEMOSD1MINI
+#define MAX_ODR false // (True) enables Fastest Output Rate (False) caps it to 100Hz (ICM20948 only)
+#else
+#define MAX_ODR false // Unsupported Board, leave as false
+#endif
+
 
 // LED configuration:
 // Configuration Priority 1 = Highest:

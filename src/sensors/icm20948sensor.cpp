@@ -387,13 +387,13 @@ void ICM20948Sensor::saveCalibration(bool repeat)
     m_Logger.trace("Saving Bias");
     #endif
 
-    imu.GetBiasGyroX(&m_Calibration.G[0]);
-    imu.GetBiasGyroY(&m_Calibration.G[1]);
-    imu.GetBiasGyroZ(&m_Calibration.G[2]);
+    imu.getBiasGyroX(&m_Calibration.G[0]);
+    imu.getBiasGyroY(&m_Calibration.G[1]);
+    imu.getBiasGyroZ(&m_Calibration.G[2]);
 
-    imu.GetBiasAccelX(&m_Calibration.A[0]);
-    imu.GetBiasAccelY(&m_Calibration.A[1]);
-    imu.GetBiasAccelZ(&m_Calibration.A[2]);
+    imu.getBiasAccelX(&m_Calibration.A[0]);
+    imu.getBiasAccelY(&m_Calibration.A[1]);
+    imu.getBiasAccelZ(&m_Calibration.A[2]);
 
     #if !USE_6_AXIS
     imu.GetBiasCPassX(&m_Calibration.C[0]);
@@ -463,18 +463,18 @@ void ICM20948Sensor::loadCalibration()
     #endif
     #endif
 
-    imu.SetBiasGyroX(m_Calibration.G[0]);
-    imu.SetBiasGyroY(m_Calibration.G[1]);
-    imu.SetBiasGyroZ(m_Calibration.G[2]);
+    imu.setBiasGyroX(m_Calibration.G[0]);
+    imu.setBiasGyroY(m_Calibration.G[1]);
+    imu.setBiasGyroZ(m_Calibration.G[2]);
 
-    imu.SetBiasAccelX(m_Calibration.A[0]);
-    imu.SetBiasAccelY(m_Calibration.A[1]);
-    imu.SetBiasAccelZ(m_Calibration.A[2]);
+    imu.setBiasAccelX(m_Calibration.A[0]);
+    imu.setBiasAccelY(m_Calibration.A[1]);
+    imu.setBiasAccelZ(m_Calibration.A[2]);
 
     #if !USE_6_AXIS
-    imu.SetBiasCPassX(m_Calibration.C[0]);
-    imu.SetBiasCPassY(m_Calibration.C[1]);
-    imu.SetBiasCPassZ(m_Calibration.C[2]);
+    imu.setBiasCPassX(m_Calibration.C[0]);
+    imu.setBiasCPassY(m_Calibration.C[1]);
+    imu.setBiasCPassZ(m_Calibration.C[2]);
     #endif
 }
 
